@@ -1,0 +1,59 @@
+{
+  "name": "OmniChannel - Inbound Channel Router",
+  "nodes": [
+    {
+      "parameters": {"httpMethod": "POST", "path": "omni/inbound", "responseMode": "responseNode", "options": {}},
+      "id": "1",
+      "name": "Channel Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "omni-inbound"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $json;\nconst source = String(input.source ?? input.channel ?? 'web').toLowerCase();\nconst channel = ['whatsapp', 'telegram', 'email', 'web'].includes(source) ? source : 'web';\nconst contact = input.contact ?? {};\nreturn [{ json: { channel, contact: { name: contact.name ?? input.from_name ?? 'Unknown customer', email: contact.email ?? input.from_email ?? null, phone: contact.phone ?? input.from_phone ?? null }, body: String(input.body ?? input.text ?? input.message ?? '').trim() } }];"
+      },
+      "id": "2",
+      "name": "Normalize Channel Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LARAVEL_OMNI_WEBHOOK_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [{"name": "Accept", "value": "application/json"}, {"name": "X-Omni-Secret", "value": "={{ $env.OMNI_WEBHOOK_SECRET }}"}]},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { channel: $json.channel, contact: $json.contact, body: $json.body } }}",
+        "options": {"timeout": 10000}
+      },
+      "id": "3",
+      "name": "Deliver to Laravel Inbox",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [760, 300]
+    },
+    {
+      "parameters": {"respondWith": "json", "responseBody": "={{ { accepted: true, channel: $('Normalize Channel Payload').item.json.channel } }}", "options": {}},
+      "id": "4",
+      "name": "Acknowledge Source",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1020, 300]
+    }
+  ],
+  "connections": {
+    "Channel Webhook": {"main": [[{"node": "Normalize Channel Payload", "type": "main", "index": 0}]]},
+    "Normalize Channel Payload": {"main": [[{"node": "Deliver to Laravel Inbox", "type": "main", "index": 0}]]},
+    "Deliver to Laravel Inbox": {"main": [[{"node": "Acknowledge Source", "type": "main", "index": 0}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder": "v1", "saveDataErrorExecution": "all", "saveDataSuccessExecution": "all"},
+  "versionId": "omnichannel-router-v1",
+  "meta": {"templateCredsSetupCompleted": true},
+  "tags": []
+}
